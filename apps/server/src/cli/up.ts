@@ -272,9 +272,11 @@ const proposeSshOwner = Effect.fn("cli.up.proposeSshOwner")(function* () {
   ).pipe(Option.map((value): Owner => ({ userId: value.userId, login: value.loginName })));
 });
 
-const resolveOwner = Effect.fn("cli.up.resolveOwner")(function* (
+export const resolveOwner = Effect.fn("cli.up.resolveOwner")(function* (
   status: TailscaleStatus,
   ownerLogin: Option.Option<string>,
+  /** The owner a previous `t3 up` saved, kept unless `--owner` names another. */
+  savedUserId: string | undefined,
 ) {
   if (status.selfTags.length === 0) {
     if (status.selfUserId === null) {
@@ -292,6 +294,8 @@ const resolveOwner = Effect.fn("cli.up.resolveOwner")(function* (
     return own;
   }
   if (Option.isSome(ownerLogin)) return yield* ownerForLogin(status, ownerLogin.value);
+  if (savedUserId !== undefined)
+    return { userId: savedUserId, login: loginOf(status, savedUserId) };
   if (!interactiveTerminal()) {
     return yield* upError(
       "This host is tagged, so it has no Tailscale user. Pass --owner <login>.",
@@ -384,7 +388,9 @@ const tailscaleEntries = Effect.fn("cli.up.tailscale_entries")(function* (
   const { entries, path: serviceEnvPath } = yield* CliService.readServiceEnv(config.baseDir);
   const tagged = tailscale.status.selfTags.length > 0;
   // With grants required, the policy names who gets in, so the box needs no owner.
-  const owner = requireGrant ? null : yield* resolveOwner(tailscale.status, flags.owner);
+  const owner = requireGrant
+    ? null
+    : yield* resolveOwner(tailscale.status, flags.owner, entries.T3CODE_TAILSCALE_OWNER);
   const configuredPort = entries.T3CODE_PORT;
   const port = Number(configuredPort ?? ServerConfig.DEFAULT_PORT);
   const net = yield* NetService.NetService;
@@ -621,10 +627,18 @@ const setUp = Effect.fn("cli.up")(function* (
   }
 
   const printServeCommand = Effect.fn(function* (reason: string) {
+    // The same settings the service would read from service.env.
     const { command } = yield* resolveHostCliCommand("serve", [
       ...Option.match(flags.baseDir, { onNone: () => [], onSome: (dir) => ["--base-dir", dir] }),
       ...(routes.lan ? ["--lan"] : []),
       ...(routes.tailscale ? ["--tailscale-sign-in"] : []),
+      ...(planned.T3CODE_PORT === undefined ? [] : ["--port", planned.T3CODE_PORT]),
+      ...(routes.tailscale && planned.T3CODE_TAILSCALE_OWNER !== undefined
+        ? ["--tailscale-owner", planned.T3CODE_TAILSCALE_OWNER]
+        : []),
+      ...(routes.tailscale && parseBoolean(planned.T3CODE_TAILSCALE_SERVE) === true
+        ? ["--tailscale-serve"]
+        : []),
     ]);
     yield* Console.log(`${reason} Run this and keep the terminal open:\n  ${command}\n`);
   });

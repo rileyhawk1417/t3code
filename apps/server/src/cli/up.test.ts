@@ -14,7 +14,7 @@ import { afterEach, vi } from "vite-plus/test";
 import packageJson from "../../package.json" with { type: "json" };
 import * as BootService from "../cloud/bootService.ts";
 import { upsertServiceEnv } from "./service.ts";
-import { planRoutes, upCommand, upPortCheck } from "./up.ts";
+import { planRoutes, resolveOwner, upCommand, upPortCheck } from "./up.ts";
 
 const none = Option.none<boolean>();
 const off = { tailscale: false, connect: false, lan: false };
@@ -232,4 +232,32 @@ it.each([
   ({ configuredPort, free, running, expected }) => {
     expect(upPortCheck({ configuredPort, portFree: free, running })).toBe(expected);
   },
+);
+
+it.effect("a rerun on a tagged host keeps the owner saved before, with no prompt", () =>
+  Effect.gen(function* () {
+    const status = {
+      version: "1.90.0",
+      magicDnsName: "box.example.ts.net",
+      tailnetIpv4Addresses: ["100.64.0.2"],
+      httpsServeEnabled: null,
+      backendState: "Running",
+      selfNodeId: "n1",
+      selfUserId: null,
+      selfTags: ["tag:t3-box"],
+      keyExpiry: null,
+      keyExpired: false,
+      health: [],
+      magicDnsEnabled: true,
+      certDomains: [],
+      userspaceNetworking: false,
+      peers: [],
+      users: [{ userId: "123", loginName: "me@example.com" }],
+    };
+    // Tests run with no terminal, so asking would fail with "Pass --owner".
+    expect(yield* resolveOwner(status, Option.none(), "123")).toEqual({
+      userId: "123",
+      login: "me@example.com",
+    });
+  }).pipe(Effect.provide(NodeServices.layer)),
 );
