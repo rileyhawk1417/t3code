@@ -277,6 +277,8 @@ export const resolveOwner = Effect.fn("cli.up.resolveOwner")(function* (
   ownerLogin: Option.Option<string>,
   /** The owner a previous `t3 up` saved, kept unless `--owner` names another. */
   savedUserId: string | undefined,
+  /** False with `--yes` or no terminal: fail with the flag to pass instead. */
+  interactive: boolean,
 ) {
   if (status.selfTags.length === 0) {
     if (status.selfUserId === null) {
@@ -296,7 +298,7 @@ export const resolveOwner = Effect.fn("cli.up.resolveOwner")(function* (
   if (Option.isSome(ownerLogin)) return yield* ownerForLogin(status, ownerLogin.value);
   if (savedUserId !== undefined)
     return { userId: savedUserId, login: loginOf(status, savedUserId) };
-  if (!interactiveTerminal()) {
+  if (!interactive) {
     return yield* upError(
       "This host is tagged, so it has no Tailscale user. Pass --owner <login>.",
     );
@@ -381,7 +383,11 @@ export const upPortCheck = (input: {
 /** The `service.env` entries Tailscale sign-in needs, after checking the port and owner. */
 const tailscaleEntries = Effect.fn("cli.up.tailscale_entries")(function* (
   tailscale: { readonly status: TailscaleStatus },
-  flags: { readonly owner: Option.Option<string>; readonly tailscaleServe: Option.Option<boolean> },
+  flags: {
+    readonly owner: Option.Option<string>;
+    readonly tailscaleServe: Option.Option<boolean>;
+    readonly yes: boolean;
+  },
   requireGrant: boolean,
 ) {
   const config = yield* ServerConfig.ServerConfig;
@@ -390,7 +396,12 @@ const tailscaleEntries = Effect.fn("cli.up.tailscale_entries")(function* (
   // With grants required, the policy names who gets in, so the box needs no owner.
   const owner = requireGrant
     ? null
-    : yield* resolveOwner(tailscale.status, flags.owner, entries.T3CODE_TAILSCALE_OWNER);
+    : yield* resolveOwner(
+        tailscale.status,
+        flags.owner,
+        entries.T3CODE_TAILSCALE_OWNER,
+        !flags.yes && interactiveTerminal(),
+      );
   const configuredPort = entries.T3CODE_PORT;
   const port = Number(configuredPort ?? ServerConfig.DEFAULT_PORT);
   const net = yield* NetService.NetService;

@@ -254,8 +254,8 @@ it.effect("a rerun on a tagged host keeps the owner saved before, with no prompt
       peers: [],
       users: [{ userId: "123", loginName: "me@example.com" }],
     };
-    // Tests run with no terminal, so asking would fail with "Pass --owner".
-    expect(yield* resolveOwner(status, Option.none(), "123")).toEqual({
+    // Not interactive, as with --yes, so asking would fail with "Pass --owner".
+    expect(yield* resolveOwner(status, Option.none(), "123", false)).toEqual({
       userId: "123",
       login: "me@example.com",
     });
